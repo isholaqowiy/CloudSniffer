@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: ai-content-detector-bot
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python main.py"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.5
+      - key: ENVIRONMENT
+        value: production
+      - key: BOT_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: WEBHOOK_URL
+        sync: false
+      - key: DATABASE_URL
+        value: "sqlite+aiosqlite:///./database/detector.db"
+    disk:
+      name: bot-sqlite-data
+      mountPath: /app/database
+      sizeGB: 1
