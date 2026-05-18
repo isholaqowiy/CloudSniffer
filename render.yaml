@@ -1,12 +1,9 @@
 services:
   - type: web
     name: ai-content-detector-bot
-    env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python main.py"
+    env: docker
+    dockerfilePath: ./Dockerfile
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.5
       - key: ENVIRONMENT
         value: production
       - key: BOT_TOKEN
