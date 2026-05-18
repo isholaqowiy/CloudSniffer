@@ -1,5 +1,7 @@
 import sys
+import asyncio
 import logging
+import httpx
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response, status
 from aiogram import Bot, Dispatcher
@@ -14,7 +16,6 @@ from handlers.subscription import subscription_router
 from handlers.admin import admin_router
 import uvicorn
 
-# Configuration adjustments targeting absolute operational tracking visibility
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -28,31 +29,53 @@ logger = logging.getLogger("ApplicationRuntimeEngine")
 bot = Bot(token=settings.BOT_TOKEN)
 dp = Dispatcher()
 
-# Register Global Middleware Infrastructure layers
 dp.message.middleware(AntiSpamMiddleware())
 dp.message.middleware(SubscriptionCheckMiddleware())
 
-# Structural Routing Context Registrations
 dp.include_router(start_router)
 dp.include_router(detector_router)
 dp.include_router(subscription_router)
 dp.include_router(admin_router)
 
+async def keep_alive():
+    """Pings the service every 10 minutes to prevent Render free tier spin-down."""
+    url = f"{settings.WEBHOOK_URL}/health"
+    while True:
+        await asyncio.sleep(600)  # every 10 minutes
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(url, timeout=10)
+                logger.info(f"Keep-alive ping sent → status {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"Keep-alive ping failed: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup Initialization steps Sequence
     await init_db()
+
+    if not settings.WEBHOOK_URL or not settings.WEBHOOK_URL.startswith("https://"):
+        raise ValueError(
+            f"WEBHOOK_URL is invalid or not set: '{settings.WEBHOOK_URL}'. "
+            "Must be a full HTTPS URL e.g. https://your-app.onrender.com"
+        )
+
     webhook_target_url = f"{settings.WEBHOOK_URL}/webhook"
-    logger.info(f"Setting physical telegram structural connection layer mappings towards: {webhook_target_url}")
+    logger.info(f"Setting webhook towards: {webhook_target_url}")
 
     await bot.set_webhook(
         url=webhook_target_url,
         allowed_updates=["message", "callback_query"],
         drop_pending_updates=True
     )
+
+    # Start keep-alive background task
+    task = asyncio.create_task(keep_alive())
+    logger.info("Keep-alive background task started.")
+
     yield
-    # Shutdown Processing parameters steps
-    logger.info("De-allocating operational thread workers and removing global webhook states safely.")
+
+    task.cancel()
+    logger.info("Removing webhook and closing session.")
     await bot.delete_webhook()
     await bot.session.close()
 
@@ -66,7 +89,7 @@ async def telegram_webhook_endpoint(request: Request):
         await dp.feed_update(bot, tg_update)
         return Response(status_code=status.HTTP_200_OK)
     except Exception as exc:
-        logger.error(f"Error encountered while feeding data pipeline update stream: {exc}")
+        logger.error(f"Error processing update: {exc}")
         return Response(status_code=status.HTTP_200_OK)
 
 @app.get("/health", status_code=status.HTTP_200_OK)
