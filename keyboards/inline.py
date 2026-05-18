@@ -3,10 +3,11 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 def get_start_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔍 Detect AI Content", callback_data="action_detect")],
-        [InlineKeyboardButton(text="📂 Upload Assignment File", callback_data="action_detect")],
+        [InlineKeyboardButton(text="📂 Upload Assignment File", callback_data="action_upload")],
         [InlineKeyboardButton(text="📜 History Log", callback_data="action_history")],
         [InlineKeyboardButton(text="💎 Premium Plans", callback_data="action_premium")],
-        [InlineKeyboardButton(text="❓ Documentation Help", callback_data="action_help")]
+        [InlineKeyboardButton(text="❓ Documentation Help", callback_data="action_help")],
+        [InlineKeyboardButton(text="❌ Cancel", callback_data="action_cancel")]
     ])
 
 def get_cancel_keyboard() -> InlineKeyboardMarkup:
