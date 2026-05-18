@@ -1,74 +1,69 @@
-import sys
+import os
 import logging
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Response, status
-from aiogram import Bot, Dispatcher
-from aiogram.types import Update
-from config.config import settings
-from database.connection import init_db
-from middlewares.anti_spam import AntiSpamMiddleware
-from middlewares.subscription_check import SubscriptionCheckMiddleware
-from handlers.start import start_router
-from handlers.detector import detector_router
-from handlers.subscription import subscription_router
-from handlers.admin import admin_router
-import uvicorn
+from fastapi import FastAPI, Request
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import CommandStart
+from aiogram.enums import ParseMode
 
-# Configuration adjustments targeting absolute operational tracking visibility
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("logs/bot.log", encoding="utf-8")
-    ]
-)
-logger = logging.getLogger("ApplicationRuntimeEngine")
+# 1. Setup logging to view issues in Render logs
+logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=settings.BOT_TOKEN)
+# 2. Initialize environment tokens
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+# Render provides the public URL via its blueprint or you can paste your service URL here
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://your-subdomain.onrender.com")
+
+if not TOKEN:
+    raise ValueError("TELEGRAM_BOT_TOKEN environment variable is missing!")
+
+# 3. Initialize Bot and Dispatcher
+bot = Bot(token=TOKEN)
 dp = Dispatcher()
+app = FastAPI()
 
-# Register Global Middleware Infrastructure layers
-dp.message.middleware(AntiSpamMiddleware())
-dp.message.middleware(SubscriptionCheckMiddleware())
+# --- TELEGRAM BOT HANDLERS ---
 
-# Structural Routing Context Registrations
-dp.include_router(start_router)
-dp.include_router(detector_router)
-dp.include_router(subscription_router)
-dp.include_router(admin_router)
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup Initialization steps Sequence
-    await init_db()
-    webhook_target_url = f"{settings.WEBHOOK_URL}/webhook"
-    logger.info(f"Setting physical telegram structural connection layer mappings towards: {webhook_target_url}")
-
-    await bot.set_webhook(
-        url=webhook_target_url,
-        allowed_updates=["message", "callback_query"],
-        drop_pending_updates=True
+@dp.message(CommandStart())
+async def command_start_handler(message: types.Message) -> None:
+    """
+    This handler receives messages with `/start` command
+    and triggers when a user presses the Start button.
+    """
+    # Custom Welcome Message
+    welcome_text = (
+        f"👋 *Welcome to Isacruzzbot, {message.from_user.full_name}!*\n\n"
+        "I am up and running smoothly. Let me know how I can help you sniff out what you need today."
     )
-    yield
-    # Shutdown Processing parameters steps
-    logger.info("De-allocating operational thread workers and removing global webhook states safely.")
+    await message.answer(text=welcome_text, parse_mode=ParseMode.MARKDOWN)
+
+# --- WEBHOOK ROUTING ---
+
+WEBHOOK_PATH = f"/webhook/{TOKEN}"
+WEBHOOK_URL = f"{RENDER_EXTERNAL_URL}{WEBHOOK_PATH}"
+
+@app.on_event("startup")
+async def on_startup():
+    # Register the webhook URL with Telegram servers when FastAPI launches
+    logging.info(f"Setting webhook to: {WEBHOOK_URL}")
+    await bot.set_webhook(url=WEBHOOK_URL)
+
+@app.post(WEBHOOK_PATH)
+async def bot_webhook(request: Request):
+    # Receive updates forwarded by Telegram
+    update = await request.json()
+    telegram_update = types.Update(**update)
+    await dp.feed_update(bot, telegram_update)
+    return {"status": "ok"}
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    # Clean up connections on exit
     await bot.delete_webhook()
     await bot.session.close()
 
-app = FastAPI(lifespan=lifespan)
-
-@app.post("/webhook", status_code=status.HTTP_200_OK)
-async def telegram_webhook_endpoint(request: Request):
-    try:
-        payload = await request.json()
-        tg_update = Update.model_validate(payload, context={"bot": bot})
-        await dp.feed_update(bot, tg_update)
-        return Response(status_code=status.HTTP_200_OK)
-    except Exception as exc:
-        logger.error(f"Error encountered while feeding data pipeline update stream: {exc}")
-        return Response(status_code=status.HTTP_200_OK)
-
-@app.get("/health", status_code=status.HTTP_200_OK)
-async def system_liveness_probe():
-    return {"status": "healthy", "environment": settings.ENVIRONMENT}
+# --- RENDER PORT BINDING ---
+if __name__ == "__main__":
+    import uvicorn
+    # Render binds internally to $PORT; fallback to 8000 locally
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
