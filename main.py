@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     webhook_target_url = f"{settings.WEBHOOK_URL}/webhook"
     logger.info(f"Setting physical telegram structural connection layer mappings towards: {webhook_target_url}")
-    
+
     await bot.set_webhook(
         url=webhook_target_url,
         allowed_updates=["message", "callback_query"],
@@ -67,12 +67,8 @@ async def telegram_webhook_endpoint(request: Request):
         return Response(status_code=status.HTTP_200_OK)
     except Exception as exc:
         logger.error(f"Error encountered while feeding data pipeline update stream: {exc}")
-        return Response(status_code=status.HTTP_200_OK) # Keep webhooks healthy under transient parsing crashes
+        return Response(status_code=status.HTTP_200_OK)
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def system_liveness_probe():
     return {"status": "healthy", "environment": settings.ENVIRONMENT}
-
-if __name__ == "__main__":
-    logger.info(f"Starting application on port: {settings.PORT}")
-    uvicorn.run("main.py:app", host="0.0.0.0", port=settings.PORT, workers=1)
