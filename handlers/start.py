@@ -9,6 +9,7 @@ from keyboards.inline import get_start_keyboard
 
 start_router = Router()
 
+
 @start_router.message(CommandStart())
 async def cmd_start_handler(message: Message, state: FSMContext):
     await state.clear()
@@ -47,6 +48,7 @@ async def cmd_start_handler(message: Message, state: FSMContext):
         reply_markup=get_start_keyboard()
     )
 
+
 @start_router.callback_query(F.data == "action_help")
 async def help_callback_handler(callback: CallbackQuery):
     help_text = (
@@ -57,19 +59,26 @@ async def help_callback_handler(callback: CallbackQuery):
         f"• *Daily Limit:* Free users get *5 scans per day*.\n\n"
         f"Use /start anytime to return to the main menu."
     )
-    await callback.message.edit_text(
-        help_text,
-        parse_mode="Markdown",
-        reply_markup=get_start_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            help_text,
+            parse_mode="Markdown",
+            reply_markup=get_start_keyboard()
+        )
+    except Exception:
+        pass  # Ignore "message not modified" error
     await callback.answer()
+
 
 @start_router.callback_query(F.data == "action_cancel")
 async def cancel_action_handler(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     first_name = callback.from_user.first_name or "there"
-    await callback.message.edit_text(
-        f"⚙️ Operation cancelled, {first_name}. Returning to main menu.",
-        reply_markup=get_start_keyboard()
-    )
+    try:
+        await callback.message.edit_text(
+            f"⚙️ Operation cancelled, {first_name}. Returning to main menu.",
+            reply_markup=get_start_keyboard()
+        )
+    except Exception:
+        pass  # Ignore "message not modified" error
     await callback.answer()
