@@ -42,7 +42,7 @@ async def keep_alive_loop():
     Pings /health every 2 minutes to prevent Render free tier
     from spinning down the service due to inactivity.
     """
-    await asyncio.sleep(60)  # Wait 1 minute after startup before first ping
+    await asyncio.sleep(60)
     while True:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -51,7 +51,7 @@ async def keep_alive_loop():
                 logger.info(f"Keep-alive ping → {url} — HTTP {response.status_code}")
         except Exception as e:
             logger.warning(f"Keep-alive ping failed (non-critical): {e}")
-        await asyncio.sleep(120)  # Ping every 2 minutes
+        await asyncio.sleep(120)
 
 
 @asynccontextmanager
@@ -99,11 +99,14 @@ app = FastAPI(lifespan=lifespan)
 async def telegram_webhook_endpoint(request: Request):
     try:
         payload = await request.json()
+        logger.info(f"Incoming update received: {payload}")
         tg_update = Update.model_validate(payload, context={"bot": bot})
+        logger.info(f"Update type: {tg_update.event_type}, Update ID: {tg_update.update_id}")
         await dp.feed_update(bot, tg_update)
+        logger.info(f"Update {tg_update.update_id} processed successfully")
         return Response(status_code=status.HTTP_200_OK)
     except Exception as exc:
-        logger.error(f"Webhook processing error: {exc}")
+        logger.error(f"Webhook processing error: {exc}", exc_info=True)
         return Response(status_code=status.HTTP_200_OK)
 
 
