@@ -3,6 +3,7 @@ services:
     name: ai-content-detector-bot
     env: docker
     dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
     envVars:
       - key: ENVIRONMENT
         value: production
@@ -13,7 +14,7 @@ services:
       - key: OPENAI_MODEL
         value: gpt-4o-mini
       - key: WEBHOOK_URL
-        sync: false
+        value: https://ai-detector-1-wn2b.onrender.com
       - key: DATABASE_URL
         value: "sqlite+aiosqlite:///./database/detector.db"
     disk:
