@@ -1,14 +1,14 @@
 import logging
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from config.config import settings
 
 logger = logging.getLogger(__name__)
 
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    "sqlite+aiosqlite:///./database/detector.db",
     echo=False,
     pool_pre_ping=True,
-    connect_args={"timeout": 30} if "sqlite" in settings.DATABASE_URL else {}
+    pool_recycle=300,
+    connect_args={"timeout": 30, "check_same_thread": False}
 )
 
 AsyncSessionLocal = async_sessionmaker(
