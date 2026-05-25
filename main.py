@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request, Response, status
 from aiogram import Bot, Dispatcher
 from aiogram.types import Update
 from config.config import settings
-from database.connection import init_db
+from database.connection import init_db, AsyncSessionLocal
 from middlewares.anti_spam import AntiSpamMiddleware
 from middlewares.subscription_check import SubscriptionCheckMiddleware
 from handlers.start import start_router
@@ -39,18 +39,30 @@ dp.include_router(admin_router)
 
 async def keep_alive_loop():
     """
-    Pings /health every 2 minutes to prevent Render free tier
-    from spinning down the service due to inactivity.
+    Dual keep-alive:
+    1. Pings /health HTTP endpoint every 2 minutes to prevent spin-down
+    2. Pings the database every 2 minutes to keep the connection alive
     """
-    await asyncio.sleep(60)
+    await asyncio.sleep(30)
     while True:
+        # HTTP ping to keep service warm
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 url = f"{settings.WEBHOOK_URL}/health"
                 response = await client.get(url)
                 logger.info(f"Keep-alive ping → {url} — HTTP {response.status_code}")
         except Exception as e:
-            logger.warning(f"Keep-alive ping failed (non-critical): {e}")
+            logger.warning(f"HTTP keep-alive ping failed: {e}")
+
+        # DB ping to keep database connection alive
+        try:
+            from sqlalchemy import text
+            async with AsyncSessionLocal() as session:
+                await session.execute(text("SELECT 1"))
+            logger.info("DB keep-alive ping — OK")
+        except Exception as e:
+            logger.warning(f"DB keep-alive ping failed: {e}")
+
         await asyncio.sleep(120)
 
 
@@ -99,9 +111,8 @@ app = FastAPI(lifespan=lifespan)
 async def telegram_webhook_endpoint(request: Request):
     try:
         payload = await request.json()
-        logger.info(f"Incoming update received: {payload}")
+        logger.info(f"Incoming update received — Update ID: {payload.get('update_id')}")
         tg_update = Update.model_validate(payload, context={"bot": bot})
-        logger.info(f"Update type: {tg_update.event_type}, Update ID: {tg_update.update_id}")
         await dp.feed_update(bot, tg_update)
         logger.info(f"Update {tg_update.update_id} processed successfully")
         return Response(status_code=status.HTTP_200_OK)
